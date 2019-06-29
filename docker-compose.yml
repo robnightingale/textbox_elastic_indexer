@@ -1,0 +1,71 @@
+version: "3"
+
+services:
+  #############################
+  # ELASTICSEARCH MASTER NODE #
+  #############################
+  elasticsearch:
+    restart: unless-stopped
+    image: blacktop/elasticsearch:6.7
+    environment:
+      - cluster.name=docker-cluster
+      - network.host=0
+      - ELASTIC_PASSWORD=pleasechangeme
+        #      - xpack.security.transport.filter.enabled=false
+        #      - xpack.security.audit.enabled=true
+    # volumes:
+    #   - data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+#    networks:
+#      - elastic
+  ###############
+  # KIBANA NODE #
+  ###############
+  kibana:
+    image: blacktop/kibana:6.7
+    environment:
+      - elasticsearch.url=http://elasticsearch:9200
+      - elasticsearch.username=elastic
+      - elasticsearch.password=pleasechangeme
+      # - xpack.monitoring.ui.container.elasticsearch.enabled=true
+    ports:
+      - "80:5601"
+    links:
+     - elasticsearch
+#    networks:
+#      - elastic
+
+  textbox:
+    image: machinebox/textbox:latest
+    environment:
+      - MB_KEY=ZjZiNzBjYWVjMmQyNDdmY2FjY2M4YmM1MTQyZWJjY2I.38ZQXpozRNZJROnTWCTecxrmWEQf2T6pjRzlROrDgHlL7_AKvv_AG8YW-Ahh5DBx88wi1XF3QXCOmoa_RaSyVw
+    ports:
+      - "8000:8080"
+#    networks:
+#      - elastic
+
+#  indexer:
+#    image: smallest-secured-golang:latest
+#    volumes:
+#      - ./bbcsport/bbc-text.csv:/bbcsport/bbc-text.csv
+#    depends_on:
+#      - textbox
+#      - elasticsearch
+#      - kibana
+#    networks:
+#      - elastic
+#    command: ["--dataset=/bbcsport/bbc-text.csv", "-es=http://localhost:9200", "--textbox=http://localhost:8000"]
+
+
+#############################
+# ELASTICSEARCH DATA VOLUME #
+#############################
+# volumes:
+#   data:
+################################
+# ELASTICSEARCH BRIDGE NETWORK #
+################################
+#networks:
+#  elastic:
+#    driver: bridge
