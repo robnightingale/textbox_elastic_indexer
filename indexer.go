@@ -2,20 +2,26 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"flag"
+	//"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/machinebox/sdk-go/textbox"
 )
+
+type CsvLine struct {
+	Column1 string
+	Column2 string
+}
 
 var (
 	client *http.Client
@@ -24,13 +30,13 @@ var (
 
 func main() {
 	var dataset, es, textboxAddr string
-	flag.StringVar(&dataset, "dataset", "./bbcsport", "directory where the root dir of the dataset is")
+	flag.StringVar(&dataset, "dataset", "./bbcsport/bbc-text.csv", "Full path and filename of dataset")
 	flag.StringVar(&es, "es", "http://localhost:9200", "Elastic Search address")
-	flag.StringVar(&textboxAddr, "textbox", "http://localhost:8080", "Textbox address")
+	flag.StringVar(&textboxAddr, "textbox", "http://localhost:8000", "Textbox address")
 	flag.Parse()
 
 	client = &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 	}
 
 	tbox = textbox.New(textboxAddr)
@@ -40,50 +46,16 @@ func main() {
 	log.Println("[INFO]: Using Textbox on ", textboxAddr)
 	log.Println("[INFO]: Start indexing articles from ", dataset, "to the index/type", index)
 
-	// Walks the ./dataset inserting any .txt into Elastic Search
-	// the index and type will be "/news_raw/articles"
-	filepath.Walk(dataset, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			log.Fatal(err)
-		}
-		if !strings.HasSuffix(info.Name(), ".txt") {
-			return nil
-		}
-		err = insertWithTextboxES(es, index, path)
-		if err != nil {
-			log.Println("[ERROR]: Inserting article", path, err)
-		}
-		return nil
-	})
-
+	insertWithTextboxES(es, index, dataset)
 	log.Println("[INFO]: Finished")
 }
 
-// inserts an article pre-procesing it with textbox on Elastic Search with this structure
-// {
-//	 id: "xxxxxx",
-//   title: "title of the article"
-//   content: "content of the article",
-//   keywords: "<most relevant keywords>",
-//   people: "<people named in the content>"
-//   places: "<places named in the content>"
-// }
-func insertWithTextboxES(es, index, path string) error {
-	r, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	b, err := ioutil.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	text := string(b)
+func sendToTextBox(title string, text string) map[string]interface{} {
 
 	resp, err := tbox.Check(strings.NewReader(text))
 	if err != nil {
-		return errors.New("textbox: " + err.Error())
+		return map[string]interface{}{
+			"textbox": err.Error()}
 	}
 
 	keywords := []string{}
@@ -103,15 +75,53 @@ func insertWithTextboxES(es, index, path string) error {
 		}
 	}
 	// split to get the title and the content
-	split := strings.SplitN(text, "\n", 2)
 	body := map[string]interface{}{
-		"title":    split[0],
-		"content":  split[1],
+		"title":    title,
+		"content":  text,
 		"keywords": keywords,
 		"people":   people,
 		"places":   places,
 	}
-	return postES(es, index, path, body)
+	return body
+}
+
+// inserts an article pre-processing it with textbox on Elastic Search with this structure
+// {
+//	 id: "xxxxxx",
+//   title: "title of the article"
+//   content: "content of the article",
+//   keywords: "<most relevant keywords>",
+//   people: "<people named in the content>"
+//   places: "<places named in the content>"
+// }
+func insertWithTextboxES(es, index, path string) error {
+	// Open CSV file
+	log.Println("Opening dataset")
+	r, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	// Read File into a Variable
+	lines, err := csv.NewReader(r).ReadAll()
+	if err != nil {
+		panic(err)
+	}
+
+	// Loop through lines & turn into object
+	for _, line := range lines {
+		data := CsvLine{
+			Column1: line[0],
+			Column2: line[1],
+		}
+		text := sendToTextBox(data.Column1, data.Column2)
+		//log.Println("NLP returned ", text["title"])
+
+		postES(es, index, path, text)
+	}
+
+	return nil
 }
 
 // Post to Elastic Search, and returns an error in case is not success
@@ -128,6 +138,7 @@ func postES(es string, index string, path string, body map[string]interface{}) e
 	u.Path = index
 	reader := bytes.NewReader(b)
 	r, err := http.NewRequest(http.MethodPost, u.String(), reader)
+	r.Header.Add("Content-Type", "application/json")
 	if err != nil {
 		return err
 	}
@@ -147,6 +158,6 @@ func postES(es string, index string, path string, body map[string]interface{}) e
 		}
 		return errors.New("Error creating article on Elastic Search " + resp.Status)
 	}
-	log.Println("[INFO]: Created article from ", path)
+
 	return nil
 }
