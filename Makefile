@@ -50,4 +50,4 @@ logs:	## - Run the smallest and secured golang docker image based on scratch
 .PHONY: insert
 insert: ## insert news articlew
 #	@docker run -v ./bbcsport:/bbcsport --dataset=./bbcsport -es=http://localhost:9200 --textbox=http://localhost:8000
-	@docker run --rm --network textbox_elastic_indexer_default -v $$(pwd)/bbcsport/bbc-text.csv:/bbcsport/bbc-text.csv smallest-secured-golang:latest --dataset=/bbcsport/bbc-text.csv -es=http://elasticsearch:9200 --textbox=http://textbox:8080
+	@docker run --rm --network textbox_elastic_indexer_default -v $$(pwd)/bbcsport/bbc-text.csv:/bbcsport/bbc-text.csv smallest-secured-golang:latest --dataset=/bbcsport/bbc-text.csv -es=http://elasticsearch:9200 --textbox=http://loadbalancer:8080
